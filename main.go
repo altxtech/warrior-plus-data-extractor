@@ -4,41 +4,62 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
-	"net/http"
-	"time"
-	"os"
 	"io"
+	"log"
+	"model"
+	"net/http"
+	"os"
+	"time"
+
+	"github.com/altxtech/warriorplusextractor/model"
 )
 
-/*
-	Overview.
-	I want this to be the prototype service for everything else
+// WarriorPlusAPIObject interface
+type WarriorPlusAPIObject interface {
+	model.Sale |
+	model.Partner |
+	model.Payment |
+	model.Affiliate |
+	model.Customer |
+	model.PartnerList |
+	model.PaymentList
+}
 
-	Client -> Abstract Away http
+// Response holds the API response
+type Response[T WarriorPlusAPIObject] struct {
+	Success    int    `json:"success"`
+	Object     string `json:"object"`
+	Uri        string `json:"uri"`
+	HasMore    bool   `json:"has_more"`
+	TotalCount int    `json:"total_count"`
+	Data       []T    `json:"data"`
+	Errors     Errors `json:"errors"`
+}
 
-	Extractor -> Uses the client to extract stuff
+// Errors holds error information
+type Errors struct {
+	ErrorType string `json:"error_type"`
+	Messages  string `json:"message"`
+}
 
-	API -> Receives extraction requests
-*/
-
-// Types
+// WarriorPlusClient provides client functionality
 type WarriorPlusClient struct {
 	ApiKey string
 }
 
-func NewWarriorPlusClient( apiKey string ) *WarriorPlusClient {
-	return &WarriorPlusClient{ ApiKey: apiKey }
+// NewWarriorPlusClient creates a new WarriorPlusClient
+func NewWarriorPlusClient(apiKey string) *WarriorPlusClient {
+	return &WarriorPlusClient{ApiKey: apiKey}
 }
 
-func (client *WarriorPlusClient) buildHTTPRequest( method string, endpoint string ) ( *http.Request, error ){
+// buildHTTPRequest creates an HTTP request
+func (client *WarriorPlusClient) buildHTTPRequest(method string, endpoint string) (*http.Request, error) {
 	url := "https://warriorplus.com/api/v2" + endpoint
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// Add the apiKey parameter
 	q := req.URL.Query()
 	q.Add("apiKey", client.ApiKey)
 	req.URL.RawQuery = q.Encode()
@@ -46,14 +67,10 @@ func (client *WarriorPlusClient) buildHTTPRequest( method string, endpoint strin
 	return req, nil
 }
 
+// executeHTTPRequest executes an HTTP request
 func (client *WarriorPlusClient) executeHTTPRequest(req *http.Request) (*http.Response, error) {
-	/*
-		Execute the request with exponential backoffTime
-	*/
-
-	backoffTime := 100 // Time to backkoff, in milliseconds 
+	backoffTime := 100 // Time to back off, in milliseconds
 	maxTries := 10
-
 
 	for i := 0; i < maxTries; i++ {
 		resp, err := http.DefaultClient.Do(req)
@@ -61,77 +78,60 @@ func (client *WarriorPlusClient) executeHTTPRequest(req *http.Request) (*http.Re
 			return nil, err
 		}
 
-		// Return early in case of success 
 		if resp.StatusCode == 200 {
 			return resp, nil
 		}
 
-		// Backoff in case of rate limit exceeded
 		if resp.StatusCode == 429 {
 			time.Sleep(time.Duration(backoffTime) * time.Millisecond)
 			backoffTime *= 2
 			continue
 		}
 
-		// Return errors for any other status StatusCode
 		errorMessage := fmt.Sprintf("HTTP Status Code: %d", resp.StatusCode)
 		return resp, errors.New(errorMessage)
 	}
-	
-	return nil, errors.New("Retry limit exceeded") 
+
+	return nil, errors.New("Retry limit exceeded")
 }
 
-func (client *WarriorPlusClient ) parseHTTPResponse (httpResponse *http.Response) (*Response, error){
+// parseHTTPResponse parses the HTTP response
+func (client *WarriorPlusClient) parseHTTPResponse[T WarriorPlusAPIObject](httpResponse *http.Response) (*Response[T], error) {
+	resp := &Response[T]{}
 
-	resp := &Response{}
-
-	// Parse the Response
 	defer httpResponse.Body.Close()
 	responseContent, err := io.ReadAll(httpResponse.Body)
 	if err != nil {
 		return nil, err
 	}
-	json.Unmarshal(responseContent, resp)
-	return resp, nil
-}
 
-func (client *WarriorPlusClient) Request(method string, endpoint string) ( *Response, error ) {
-	
-	// Build request for the endpoint
-	req, err := client.buildHTTPRequest(method, endpoint)
-	log.Println(req.URL)
+	err = json.Unmarshal(responseContent, resp)
 	if err != nil {
 		return nil, err
 	}
-	// Execute the http request
+
+	return resp, nil
+}
+
+// Request makes a request to the API
+func (client *WarriorPlusClient) Request[T WarriorPlusAPIObject](method string, endpoint string) (*Response[T], error) {
+	req, err := client.buildHTTPRequest(method, endpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	httpResp, err := client.executeHTTPRequest(req)
 	if err != nil {
 		return nil, err
 	}
-	// Parse the response
-	resp, err := client.parseHTTPResponse(httpResp)
+
+	resp, err := client.parseHTTPResponse[T](httpResp)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return resp, nil
 }
-	
-type Errors struct {
-	ErrorType string `json:"error_type"`
-	Messages string `json:"message"`
-}
-
-type Response struct {
-	Success int `json:"success"`
-	Object string `json:"object"`
-	Uri string `json:"uri"`
-	HasMore bool `json:"has_more"`
-	TotalCount int `json:"total_count"`
-	Data []interface{} `json:"data"`
-	Errors Errors `json:"errors"`
-}
-
 
 func main() {
 	log.Println("Creating WarriorPlus Client")
@@ -139,7 +139,7 @@ func main() {
 
 	// Query sales
 	log.Println("Querying sales")
-	salesResponse, err := client.Request("GET", "/sales")
+	salesResponse, err := client.Request[Sale]("GET", "/sales")
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -1,0 +1,65 @@
+syntax = "proto3";
+package warriorplusextractor;
+
+option go_package = "github.com/altxtech/warriorplusextractor/model";
+
+import "google/protobuf/timestamp.proto";
+
+
+message Sale {
+    string object = 1;
+    string id = 2;
+    google.protobuf.Timestamp created = 3;
+    string product_id = 4;
+    double amount = 5;
+    string currency = 6;
+    string status = 7;
+    google.protobuf.Timestamp refund_date = 8;
+    string receiver_email = 9;
+    string sid = 10;
+    string hop_tid = 11;
+    string hop_sid = 12;
+    Customer customer = 13;
+	Affiliate affiliate = 14;
+	bool recurring = 15;
+    PartnerList partners = 16;
+    PaymentList payments = 17;
+}
+
+message Customer {
+    string object = 1;
+    string id = 2;
+    string email = 3;
+    string name = 4;
+    string country = 5;
+}
+
+message Affiliate {
+	// TODO Define
+}
+
+message PartnerList { // Define the fields for Partner if needed
+	string object = 1;
+	string uri = 3;
+	int64 total_count = 4;
+	bool has_more = 5;
+	repeated Partner data = 6;
+}
+
+message Partner {
+	// TODO: Define
+}
+
+
+message PaymentList {
+	string object = 1;
+	string uri = 2;
+	int64 total_count = 3;
+	bool has_more = 4;
+	repeated Payment data = 5;
+}
+
+message Payment {
+	// TODO: Define
+}
+
